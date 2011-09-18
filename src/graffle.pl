@@ -109,7 +109,7 @@ details( DocId, Id, 'Group', TermList, G, Results ) :-
     get_assoc( 'Graphics', G, Gs ),
 
     (( get_assoc( isSubgraph, G, _ ), 
-       [BackG|_] = Gs,
+       subgraph_backshape( Gs, BackG ),
        get_assoc( 'ID', BackG, BackId ),
        SubG = subgraph(DocId:BackId) ) ; 
     
@@ -119,6 +119,8 @@ details( DocId, Id, 'Group', TermList, G, Results ) :-
 
     Results = [ graf_group(Id,SubG) | TList ].
 
+subgraph_backshape( [Shape], Shape ) :- !.
+subgraph_backshape( [_|Rest], Shape ) :- subgraph_backshape( Rest, Shape ).
 
 %non sub-graph
 group_details( bool(false), Out, Id, G, Gs ) :-  
