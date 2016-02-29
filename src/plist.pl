@@ -1,42 +1,44 @@
-:- module( plist, [read_plist/2]).
+% (c) 2016, David N. Main - see LICENSE file
 
-%% Read a PLIST file and return <assoc>
-read_plist( File, Plist ) :- 
-	parse_plist(File,XML),
-	[element(plist,_,[Dict])] = XML,
-	elem(Dict,Plist).
+:- module(plist, [read_plist/2]).
 
-%% Get the Apple PLIST DTD
-apple_plist_dtd(DTD) :- 
-	catch( dtd(plist,DTD), _, 
-           ( new_dtd(plist,DTD),
-             load_dtd(DTD,'plist.dtd',[dialect(xml)]) )).
+% Read a PLIST file and return a dictionary term
+read_plist(FileName, Plist) :- 
+    load_xml(FileName, XML, []),
+    only_elements(XML, [Doc]),
+    elem(Doc, Plist).
 
-%% Parse PLIST XML file
-parse_plist( File, XML ) :- 
-	apple_plist_dtd(Plist),
-    load_structure(File,XML,[dialect(xml),dtd(Plist)]).
+% Filter a list of nodes to leave only elements (we do want whitespace in text)
+only_elements(Nodes, Elements) :- include(is_element, Nodes, Elements).
+is_element(element(_,_,_)). 
 
-%% Process PLIST elements
-elem(element(Tag,_,Kids),E) :- Elem =.. [Tag,Kids], elem(Elem,E). % unwrap elements - don't care about attrs
-elem(array(Kids),E) :- maplist( elem, Kids, E ).
-elem(integer([Value]),E) :- atom_number(Value,E).
-elem(real([Value]),E) :- atom_number(Value,E).
-elem(string([E]),E).
-elem(string([]),empty(string)).
-elem(true(_),bool(true)).
-elem(false(_),bool(false)).
+% Process PLIST elements
+elem(element(plist, _, Body), E) :- only_elements(Body, [Root]), elem(Root, E), !.
+elem(element(integer, _, [Value]), E) :- atom_number(Value, E), !.
+elem(element(real, _, [Value]), E) :- atom_number(Value, E), !.
+elem(element(string, _, [E]), E) :- !.
+elem(element(string, _, []), empty(string)) :- !.
+elem(element(true, _, _), bool(true)) :- !.
+elem(element(false, _, _), bool(false)) :- !.
 
-elem(dict(Kids),E) :-
-	dict_entries( Kids, Pairs ),
-	list_to_assoc( Pairs, E ).
+% arrays -> lists
+elem(element(array, _, Kids), E) :-
+    only_elements(Kids, Elems),
+    maplist(elem, Elems, E), !.
 
-elem(A,unimplemented(A)).
+% dicts -> new style dicts
+elem(element(dict, _, Kids), E) :- 
+    only_elements(Kids, Elems),
+    dict_entries( Elems, Pairs ),
+    dict_pairs(E, dict, Pairs), !.
 
-%% read key-value pairs into a list
-dict_entries([K,V |R], Pairs ) :-
-	element(key,_,[Key]) = K,
-	elem(V,Value),
-	dict_entries(R,Rest),
-	Pairs = [(Key - Value) | Rest ].
+% unrecognized plist types
+elem(element(A, _, _), unimplemented(A)).
+
+% read key-value pairs into a list
+dict_entries([K, V | R], Pairs ) :-
+    element(key, _, [Key]) = K,
+    elem(V, Value),
+    dict_entries(R, Rest),
+    Pairs = [(Key - Value) | Rest ], !.
 dict_entries( _, [] ).
